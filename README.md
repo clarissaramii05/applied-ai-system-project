@@ -68,23 +68,48 @@ Tasks are ordered by priority (high first), then shortest duration.
 - Kept Nail trim (15 min, low); 0 min left.
 - Skipped Brushing (20 min, low); not enough time left.
 
-```
 
-## 🧪 Testing PawPal+
+## Testing PawPal+ 
+
+Run the full test suite from the project root with:
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+**What the tests cover** (`tests/test_pawpal.py`):
+
+- **Task completion** — `mark_done()` flips a task's status to done.
+- **Adding tasks** — adding a task to a pet grows that pet's task list.
+- **Recurrence logic** — completing a `DAILY` task spawns a new task due the next
+  day, a `WEEKLY` task spawns one due seven days later, and a `ONCE` task creates
+  no follow-up.
+- **Sorting correctness** — `sort_by_time()` returns tasks in chronological order.
+- **Conflict detection** — `detect_conflicts()` flags tasks scheduled at the same
+  time and reports no conflict when times do not overlap.
+
+Test output:
 
 ```
-# Paste your pytest output here
+python -m pytest
+========================== test session starts ===========================
+platform win32 -- Python 3.13.1, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\clari\OneDrive\work\ai110-module2show-pawpal-starter
+plugins: anyio-4.14.1
+collected 8 items                                                         
+
+tests\test_pawpal.py ........                                       [100%]
+
+=========================== 8 passed in 0.13s ============================
 ```
+
+**Confidence Level: (4/5)**
+
+All 8 tests pass and they cover the core scheduling behaviors (sorting, recurrence,
+conflict detection, task management). I held back the fifth star because the suite
+does not yet test edge cases like an empty task list, tasks that are longer than the
+whole time budget, or overlapping tasks across different pets, and `generate_plan()`
+itself is exercised through `main.py` rather than by an automated test.
 
 ## 📐 Smarter Scheduling
 

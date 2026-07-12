@@ -5,7 +5,7 @@ Run from the project root with:  python -m pytest
 
 from datetime import date, timedelta
 
-from pawpal_system import Pet, Task, Category, Priority, Recurrence
+from pawpal_system import Pet, Task, Scheduler, Category, Priority, Recurrence
 
 
 def test_task_completion_changes_status():
@@ -68,3 +68,43 @@ def test_one_off_task_does_not_recur():
     pet.list_tasks()[0].mark_done()
 
     assert len(pet.list_tasks()) == 1
+
+
+def test_sort_by_time_returns_chronological_order():
+    """sort_by_time() should return tasks ordered by their HH:MM time."""
+    # Added deliberately out of order.
+    tasks = [
+        Task("Evening walk", Category.WALK, 30, Priority.HIGH, time="18:00"),
+        Task("Feed", Category.FEEDING, 10, Priority.HIGH, time="07:30"),
+        Task("Playtime", Category.ENRICHMENT, 25, Priority.MEDIUM, time="10:00"),
+    ]
+    scheduler = Scheduler(tasks, available_minutes=120)
+
+    ordered_times = [t.time for t in scheduler.sort_by_time()]
+
+    assert ordered_times == ["07:30", "10:00", "18:00"]
+
+
+def test_detect_conflicts_flags_duplicate_times():
+    """Two tasks scheduled at the same time should produce a warning."""
+    tasks = [
+        Task("Brushing", Category.GROOMING, 20, Priority.LOW, time="13:30"),
+        Task("Give meds", Category.MEDS, 5, Priority.HIGH, time="13:30"),
+    ]
+    scheduler = Scheduler(tasks, available_minutes=120)
+
+    conflicts = scheduler.detect_conflicts()
+
+    assert len(conflicts) == 1
+    assert "13:30" in conflicts[0]
+
+
+def test_detect_conflicts_returns_empty_when_no_overlap():
+    """Tasks at non-overlapping times should report no conflicts."""
+    tasks = [
+        Task("Feed", Category.FEEDING, 10, Priority.HIGH, time="08:00"),
+        Task("Walk", Category.WALK, 30, Priority.HIGH, time="09:00"),
+    ]
+    scheduler = Scheduler(tasks, available_minutes=120)
+
+    assert scheduler.detect_conflicts() == []
