@@ -16,13 +16,27 @@ These three actions basically form the flow of the whole app, going from input t
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My first UML had seven classes plus a few enums. I tried to split them up by what each one is actually responsible for instead of dumping everything into one big class.
+
+- Owner: holds the person's info, their preferences, and the daily time budget (available_minutes). The time budget matters a lot because it is the main constraint the scheduler has to respect.
+- Pet: holds the animal's info (name, species, breed, age) and the list of tasks that belong to it. I kept this separate from Owner so that later on one owner could have more than one pet.
+- Task: this is the main input for everything. It holds the name, category, duration, priority, recurrence, and a done flag. It can mark itself done and check if it is due on a given day.
+- Scheduler: this is the brain of the app. It takes the tasks and the time budget and does the actual work of sorting, filtering by time, generating the plan, and explaining its choices.
+- DailyPlan: the output. It holds the scheduled entries, the tasks that got skipped, and the total minutes used, and it can render itself for the UI.
+- PlanEntry: one time slot in the plan, so it links a task to a start and end time.
+- Priority, Category, and Recurrence: I made these enums so the values stay consistent instead of me typing random strings everywhere.
+
+The idea was that the data classes (Task, Pet, Owner, PlanEntry, DailyPlan) just hold information, and the Scheduler is the one class that actually does the thinking.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+Once I wrote out the skeleton I noticed two problems and fixed them.
+
+The first was a missing relationship. My tasks lived on Pet and my time budget lived on Owner, but the Scheduler just took a flat list of tasks. There was nothing that actually gathered all the tasks from all the pets and handed them to the Scheduler. So if an owner had two pets I had no clean way to build the input. I added a collect_tasks(on) method to Owner that pulls together every pet's tasks that are due on a given day. That way the Owner is in charge of assembling the task pool and the UI does not have to stitch each pet's list together by hand.
+
+The second was more of a bottleneck. My Priority enum used strings like "high" and "medium", but if I ever sort by those directly they come out in alphabetical order, which is wrong (it would put "high" before "low" before "medium"). Sorting is basically the core of the whole scheduler, so this would have quietly broken everything. I added a rank property to Priority that turns it into a number (high is 3, medium is 2, low is 1) so sort_tasks has a real ordering to sort by.
+
+Both changes were small but they connected the classes together and made sure the most important part, the sorting, is actually reliable.
 
 ---
 
