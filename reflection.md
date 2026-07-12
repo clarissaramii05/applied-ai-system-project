@@ -49,8 +49,11 @@ Both changes were small but they connected the classes together and made sure th
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+One tradeoff my scheduler makes is that it is greedy. When it builds the plan it goes through the tasks in priority order and just keeps adding them until the time budget runs out. It never backtracks to check if a different combination of tasks would have fit better. So there are cases where it makes a choice that is not technically the best use of the time.
+
+For example, say the owner has 30 minutes free and a high priority task that takes 30 minutes. My scheduler grabs that one task and the budget is gone, even if two medium priority tasks that each take 15 minutes could have filled the same slot and gotten more things done. A smarter approach would be something like the knapsack algorithm that tries different combinations to squeeze in the most value, but that is a lot more complicated to write and slower to run.
+
+I think the greedy tradeoff is reasonable here because the whole point of the app is that the owner is busy and wants the important stuff to happen. Doing the high priority task first matches how a real person thinks, since you would rather get the one thing that really matters done than skip it to fit in two smaller things. It is also way easier to explain to the user why a task was chosen, which fits the goal of the plan explaining its own reasoning. If I had more time I would add an option to switch between "priority first" and "fit the most tasks" so the owner could pick.
 
 ---
 

@@ -47,10 +47,38 @@ class Task:
     priority: Priority
     recurrence: Recurrence = Recurrence.ONCE
     done: bool = False
+    time: str = "08:00"  # preferred time of day, "HH:MM" (24-hour)
+    due_date: Date = field(default_factory=Date.today)
+    # Back-reference to the owning pet, so completing a recurring task can add
+    # its next occurrence to the same pet. Kept out of repr/equality.
+    pet: "Pet | None" = field(default=None, repr=False, compare=False)
 
-    def mark_done(self) -> None:
-        """Flag this task as completed."""
+    def mark_done(self) -> "Task | None":
+        """Mark complete; if recurring, add the next occurrence to its pet and return it."""
         self.done = True
+        upcoming = self.next_occurrence()
+        if upcoming is not None and self.pet is not None:
+            self.pet.add_task(upcoming)
+        return upcoming
+
+    def next_occurrence(self) -> "Task | None":
+        """Return a fresh, uncompleted copy due on the next date, or None if it does not repeat."""
+        if self.recurrence is Recurrence.DAILY:
+            step = timedelta(days=1)
+        elif self.recurrence is Recurrence.WEEKLY:
+            step = timedelta(weeks=1)
+        else:
+            return None
+        return Task(
+            name=self.name,
+            category=self.category,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            recurrence=self.recurrence,
+            done=False,
+            time=self.time,
+            due_date=self.due_date + step,
+        )
 
     def is_due_today(self, on: Date) -> bool:
         """Return True if the task is unfinished and due on the given date (weekly defaults to Mondays)."""
@@ -76,7 +104,8 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Attach a care task to this pet."""
+        """Attach a care task to this pet and record the pet on the task."""
+        task.pet = self
         self.tasks.append(task)
 
     def remove_task(self, task: Task) -> None:
@@ -120,6 +149,14 @@ class Owner:
                 if task.is_due_today(on):
                     due.append(task)
         return due
+
+    def filter_by_status(self, done: bool) -> list[Task]:
+        """Return all tasks across every pet matching the given done status."""
+        return [task for pet in self.pets for task in pet.tasks if task.done == done]
+
+    def filter_by_pet(self, pet_name: str) -> list[Task]:
+        """Return all tasks belonging to the pet with the given name."""
+        return [task for pet in self.pets if pet.name == pet_name for task in pet.tasks]
 
 
 @dataclass
@@ -184,6 +221,14 @@ class Scheduler:
             key=lambda t: (-t.priority.rank, t.duration_minutes),
         )
 
+    def sort_by_time(self) -> list[Task]:
+        """Order tasks chronologically by their 'HH:MM' time attribute.
+
+        Zero-padded 24-hour strings sort lexicographically in clock order,
+        so a plain string sort on the time is all we need.
+        """
+        return sorted(self.tasks, key=lambda t: t.time)
+
     def filter_by_time(self) -> list[Task]:
         """Return the sorted tasks that fit within the time budget, highest priority first."""
         kept: list[Task] = []
@@ -211,6 +256,44 @@ class Scheduler:
             else:
                 plan.skipped.append(task)
         return plan
+
+    @staticmethod
+    def _minutes(hhmm: str) -> int:
+        """Convert an 'HH:MM' time string into minutes since midnight."""
+        hours, minutes = hhmm.split(":")
+        return int(hours) * 60 + int(minutes)
+
+    @staticmethod
+    def _owner_of(task: Task) -> str:
+        """Return the owning pet's name, or a placeholder if unassigned."""
+        return task.pet.name if task.pet is not None else "unassigned"
+
+    def detect_conflicts(self) -> list[str]:
+        """Return warning messages for tasks whose time slots overlap.
+
+        Each task covers [start, start + duration). Two tasks conflict when
+        one starts before the other ends, whether they belong to the same
+        pet or different pets. Returns messages (empty list if none) instead
+        of raising, so the caller can warn the user and keep running.
+        """
+        warnings: list[str] = []
+        ordered = self.sort_by_time()
+        for i in range(len(ordered)):
+            for j in range(i + 1, len(ordered)):
+                first, second = ordered[i], ordered[j]
+                first_start = self._minutes(first.time)
+                first_end = first_start + first.duration_minutes
+                second_start = self._minutes(second.time)
+                second_end = second_start + second.duration_minutes
+                if first_start < second_end and second_start < first_end:
+                    same = first.pet is not None and first.pet is second.pet
+                    whose = "same pet" if same else "different pets"
+                    warnings.append(
+                        f"WARNING - conflict ({whose}): "
+                        f"'{first.name}' for {self._owner_of(first)} at {first.time} "
+                        f"overlaps '{second.name}' for {self._owner_of(second)} at {second.time}."
+                    )
+        return warnings
 
     def explain(self) -> str:
         """Explain, in plain language, how the plan was built."""

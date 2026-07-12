@@ -1,4 +1,8 @@
+from datetime import date
+
 import streamlit as st
+
+from pawpal_system import Owner, Pet, Task, Scheduler, Category, Priority, Recurrence
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -38,51 +42,103 @@ At minimum, your system should:
 
 st.divider()
 
-st.subheader("Quick Demo Inputs (UI only)")
+st.subheader("Owner & Pet")
 owner_name = st.text_input("Owner name", value="Jordan")
 pet_name = st.text_input("Pet name", value="Mochi")
 species = st.selectbox("Species", ["dog", "cat", "other"])
+budget = st.number_input(
+    "Time available today (minutes)", min_value=1, max_value=1440, value=90
+)
 
 st.markdown("### Tasks")
-st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
+st.caption("Add a few tasks. These become real Task objects fed into your scheduler.")
 
+# Store real Task objects (not dicts) so we can hand them straight to the scheduler.
 if "tasks" not in st.session_state:
     st.session_state.tasks = []
 
-col1, col2, col3 = st.columns(3)
+task_title = st.text_input("Task title", value="Morning walk")
+col1, col2, col3, col4 = st.columns(4)
 with col1:
-    task_title = st.text_input("Task title", value="Morning walk")
+    category = st.selectbox("Category", [c.value for c in Category])
 with col2:
     duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
 with col3:
-    priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+    priority = st.selectbox("Priority", [p.value for p in Priority], index=0)
+with col4:
+    recurrence = st.selectbox("Repeats", [r.value for r in Recurrence])
 
 if st.button("Add task"):
-    st.session_state.tasks.append(
-        {"title": task_title, "duration_minutes": int(duration), "priority": priority}
+    task = Task(
+        name=task_title,
+        category=Category(category),
+        duration_minutes=int(duration),
+        priority=Priority(priority),
+        recurrence=Recurrence(recurrence),
     )
+    st.session_state.tasks.append(task)
 
 if st.session_state.tasks:
     st.write("Current tasks:")
-    st.table(st.session_state.tasks)
+    st.table(
+        [
+            {
+                "Task": t.name,
+                "Category": t.category.value,
+                "Duration (min)": t.duration_minutes,
+                "Priority": t.priority.value,
+                "Repeats": t.recurrence.value,
+            }
+            for t in st.session_state.tasks
+        ]
+    )
 else:
     st.info("No tasks yet. Add one above.")
 
 st.divider()
 
 st.subheader("Build Schedule")
-st.caption("This button should call your scheduling logic once you implement it.")
+st.caption("Builds an Owner + Pet from your inputs and runs the Scheduler.")
 
 if st.button("Generate schedule"):
-    st.warning(
-        "Not implemented yet. Next step: create your scheduling logic (classes/functions) and call it here."
-    )
-    st.markdown(
-        """
-Suggested approach:
-1. Design your UML (draft).
-2. Create class stubs (no logic).
-3. Implement scheduling behavior.
-4. Connect your scheduler here and display results.
-"""
-    )
+    if not st.session_state.tasks:
+        st.warning("Add at least one task before generating a schedule.")
+    else:
+        # Assemble the domain objects from the UI inputs.
+        owner = Owner(owner_name, available_minutes=int(budget))
+        pet = Pet(pet_name, species=species)
+        for task in st.session_state.tasks:
+            pet.add_task(task)
+        owner.add_pet(pet)
+
+        # Run the scheduler for today.
+        today = date.today()
+        scheduler = Scheduler.from_owner(owner, today)
+        plan = scheduler.generate_plan(today)
+
+        st.markdown(f"#### Today's Schedule for {owner.name}")
+        if plan.entries:
+            st.table(
+                [
+                    {
+                        "Time": f"{e.start_time.strftime('%H:%M')}–{e.end_time.strftime('%H:%M')}",
+                        "Task": e.task.name,
+                        "Duration (min)": e.task.duration_minutes,
+                        "Priority": e.task.priority.value,
+                    }
+                    for e in plan.entries
+                ]
+            )
+        else:
+            st.info("Nothing fit in the schedule today.")
+
+        st.caption(f"Time used: {plan.total_minutes} / {owner.available_minutes} min")
+
+        if plan.skipped:
+            st.warning(
+                "Skipped (not enough time): "
+                + ", ".join(t.name for t in plan.skipped)
+            )
+
+        with st.expander("Why this plan?"):
+            st.text(scheduler.explain())
