@@ -1,2 +1,3 @@
 streamlit>=1.30
 pytest>=7.0
+# The RAG feature (rag.py) is standard-library only and adds no dependencies.

@@ -1,6 +1,6 @@
 """PawPal+ system.
 
-Core classes for the pet care planner, generated from diagrams/uml.mmd.
+Core classes for the pet care planner, generated from diagrams/class_diagram.mmd.
 Task, Pet, Owner, and Scheduler are implemented; PlanEntry and DailyPlan
 are still simple data holders with a couple of helper stubs.
 """

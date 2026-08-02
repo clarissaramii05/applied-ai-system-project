@@ -122,6 +122,46 @@ Each scheduling feature and the method that implements it (all in `pawpal_system
 | Conflict handling | `Scheduler.detect_conflicts()` | Treats each task as a `[start, start + duration)` interval and flags any that overlap, for the same pet or different pets. Returns a list of warning messages instead of raising, so the app keeps running. |
 | Recurring tasks | `Task.mark_done()`, `Task.next_occurrence()` | Completing a `DAILY` or `WEEKLY` task auto-creates the next occurrence with its `due_date` advanced by `timedelta` (one day / one week). `ONCE` tasks do not repeat. |
 
+## 🤖 AI Feature: Retrieval-Augmented Generation (RAG)
+
+PawPal+ includes a **fully offline RAG feature** (no API key, no network, standard
+library only). Instead of guessing, the app *retrieves* real pet-care guidance from a
+small knowledge base before it answers a question or suggests tasks.
+
+**How it works** (`rag.py`):
+
+1. **Knowledge base** — markdown docs in `knowledge/` (dogs, cats, feeding, grooming,
+   health & safety) are split into sections at each `##` heading.
+2. **Retrieval** — a pure-Python **TF-IDF + cosine-similarity** index ranks those
+   sections against the user's query. No embeddings service or model download.
+3. **Grounded answers** — `RagAssistant.answer()` returns an *extractive* answer built
+   only from retrieved text, and cites the source file, so it cannot hallucinate facts.
+4. **Task suggestions** — `RagAssistant.suggest_tasks(species)` parses a
+   `Suggested daily tasks` block from the species doc into real `Task` objects.
+
+**Integration with the core logic:** suggestions flow into the existing `Scheduler`
+through `Owner.add_suggested_tasks()` in `pawpal_system.py`. The core imports nothing
+from `rag.py` — suggestions arrive as plain data — so retrieval stays cleanly isolated.
+
+**Guardrails** (all logged):
+
+| Guardrail | Behavior |
+|-----------|----------|
+| Emergency deflection | Queries mentioning bleeding, choking, poison, seizure, etc. skip retrieval and point the owner to a vet. |
+| Low confidence | If the best match scores below a threshold, the app says "I don't know" instead of returning an irrelevant section. |
+| Input validation | Empty and over-long queries are rejected safely. |
+| Grounding | Answers only ever echo retrieved knowledge-base text, with a citation. |
+
+**Logging:** every query, what was retrieved (with scores), which guardrail fired, and
+each suggestion batch is written to `pawpal.log` (git-ignored). All entry points are
+wrapped in `try/except` so the UI never crashes.
+
+**Where to try it in the app:** the *"✨ Suggest tasks"* button under Tasks, and the
+*"🔎 Ask PawPal"* question box near the bottom.
+
+**Tests** (`tests/test_rag.py`): retrieval relevance, all four guardrails, suggestion
+parsing, and the RAG-to-scheduler integration seam.
+
 ## 📸 Demo Walkthrough
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
