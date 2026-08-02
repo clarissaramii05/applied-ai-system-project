@@ -1,92 +1,56 @@
-classDiagram
-    %% PawPal+ class diagram
-    %% Flow: Owner + Pet provide Tasks -> Scheduler builds a DailyPlan of PlanEntry items.
+flowchart TB
+    %% PawPal+ system / architecture diagram
+    %% Shows how the project is organized: UI -> core scheduling logic, plus the
+    %% RAG AI feature that grounds answers and task suggestions in a knowledge base.
+    %% (The detailed class diagram now lives in diagrams/class_diagram.mmd.)
 
-    class Owner {
-        +str name
-        +int available_minutes
-        +list~str~ preferences
-        +add_pet(pet Pet) void
-        +list_pets() list~Pet~
-        +set_time_budget(minutes int) void
-    }
+    User([Pet owner])
 
-    class Pet {
-        +str name
-        +str species
-        +str breed
-        +int age
-        +add_task(task Task) void
-        +remove_task(task Task) void
-        +list_tasks() list~Task~
-    }
+    subgraph UI["UI layer &mdash; app.py (Streamlit)"]
+        Inputs[Owner / Pet / Task inputs]
+        AskBox[Ask PawPal care question]
+        SuggestBtn[Suggest tasks button]
+        PlanView[Schedule + why-this-plan]
+    end
 
-    class Task {
-        +str name
-        +Category category
-        +int duration_minutes
-        +Priority priority
-        +Recurrence recurrence
-        +bool done
-        +mark_done() void
-        +is_due_today(date Date) bool
-    }
+    subgraph Core["Core logic &mdash; pawpal_system.py"]
+        Domain[Owner / Pet / Task]
+        Scheduler[Scheduler]
+        DailyPlan[DailyPlan / PlanEntry]
+    end
 
-    class Scheduler {
-        +list~Task~ tasks
-        +int available_minutes
-        +sort_tasks() list~Task~
-        +filter_by_time() list~Task~
-        +generate_plan(date Date) DailyPlan
-        +explain() str
-    }
+    subgraph RAG["AI feature &mdash; rag.py  (new)"]
+        Guard[Guardrails<br/>emergency / off-topic / validation]
+        Retriever[TF-IDF retriever]
+        Suggest[suggest_tasks]
+    end
 
-    class DailyPlan {
-        +Date date
-        +list~PlanEntry~ entries
-        +list~Task~ skipped
-        +int total_minutes
-        +add_entry(entry PlanEntry) void
-        +list_skipped() list~Task~
-        +render() str
-    }
+    KB[("knowledge/*.md<br/>pet-care knowledge base")]
+    Log[["pawpal.log<br/>(logging)"]]
+    Tests[["tests/ &mdash; pytest"]]
 
-    class PlanEntry {
-        +Time start_time
-        +Time end_time
-        +Task task
-        +duration() int
-    }
+    %% Scheduling flow (unchanged core)
+    User --> Inputs
+    Inputs --> Domain
+    Domain --> Scheduler
+    Scheduler --> DailyPlan
+    DailyPlan --> PlanView
+    PlanView --> User
 
-    class Priority {
-        <<enumeration>>
-        HIGH
-        MEDIUM
-        LOW
-    }
+    %% RAG question-answering flow
+    User --> AskBox
+    AskBox --> Guard
+    Guard --> Retriever
+    Retriever --> KB
+    Retriever --> AskBox
 
-    class Category {
-        <<enumeration>>
-        WALK
-        FEEDING
-        MEDS
-        ENRICHMENT
-        GROOMING
-    }
+    %% RAG task-suggestion flow feeds the existing scheduler
+    User --> SuggestBtn
+    SuggestBtn --> Suggest
+    Suggest --> Retriever
+    Suggest --> Domain
 
-    class Recurrence {
-        <<enumeration>>
-        ONCE
-        DAILY
-        WEEKLY
-    }
-
-    Owner "1" --> "*" Pet : owns
-    Pet "1" --> "*" Task : has
-    Scheduler "1" --> "*" Task : plans from
-    Scheduler ..> DailyPlan : produces
-    DailyPlan "1" *-- "*" PlanEntry : contains
-    PlanEntry --> Task : schedules
-    Task --> Priority : uses
-    Task --> Category : uses
-    Task --> Recurrence : uses
+    %% Cross-cutting concerns
+    RAG -. logs .-> Log
+    Tests -. verify .-> Core
+    Tests -. verify .-> RAG

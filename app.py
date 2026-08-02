@@ -3,6 +3,7 @@ from datetime import date
 import streamlit as st
 
 from pawpal_system import Owner, Pet, Task, Scheduler, Category, Priority, Recurrence
+from rag import get_assistant
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -78,6 +79,30 @@ if st.button("Add task"):
     )
     st.session_state.tasks.append(task)
 
+# RAG feature: pull grounded task suggestions for this species out of the
+# knowledge base and fold them into the plan through the core Owner hook.
+st.caption("Not sure what to add? Let PawPal suggest a starter routine from its care guide.")
+if st.button(f"✨ Suggest tasks for a {species}"):
+    try:
+        specs = get_assistant().suggest_tasks(species)
+        if not specs:
+            st.info(
+                f"PawPal's care guide doesn't cover '{species}' yet. "
+                "Suggestions are available for dogs and cats."
+            )
+        else:
+            # Route suggestions through the core seam so they become real Task
+            # objects exactly like hand-entered ones (see Owner.add_suggested_tasks).
+            temp_owner = Owner(owner_name)
+            temp_pet = Pet(pet_name, species=species)
+            added = temp_owner.add_suggested_tasks(temp_pet, specs)
+            st.session_state.tasks.extend(added)
+            st.success(
+                f"Added {len(added)} suggested task(s) from PawPal's {species} care guide."
+            )
+    except Exception as exc:  # keep the UI alive if retrieval hiccups
+        st.error(f"Could not suggest tasks right now: {exc}")
+
 if st.session_state.tasks:
     st.write("Current tasks:")
     st.table(
@@ -142,3 +167,28 @@ if st.button("Generate schedule"):
 
         with st.expander("Why this plan?"):
             st.text(scheduler.explain())
+
+st.divider()
+
+# RAG feature: retrieval-grounded Q&A over the pet-care knowledge base.
+st.subheader("🔎 Ask PawPal")
+st.caption(
+    "Ask a routine pet-care question. Answers are retrieved from PawPal's care "
+    "notes (Retrieval-Augmented Generation) and cite their source. This is "
+    "general guidance, not veterinary advice."
+)
+question = st.text_input("Your question", value="How often should I feed my dog?")
+if st.button("Ask PawPal"):
+    try:
+        result = get_assistant().answer(question)
+    except Exception as exc:  # never let the assistant crash the app
+        st.error(f"Something went wrong answering that: {exc}")
+    else:
+        if result.guardrail == "emergency":
+            st.error(result.text)  # emergency deflection stands out in red
+        elif result.grounded:
+            st.markdown(result.text)
+            if result.sources:
+                st.caption("Sources: " + ", ".join(result.sources))
+        else:
+            st.warning(result.text)  # empty / too-long / low-confidence

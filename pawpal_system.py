@@ -7,9 +7,14 @@ are still simple data holders with a couple of helper stubs.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date as Date, time as Time, datetime, timedelta
 from enum import Enum
+
+#: Logger for the core domain layer. Keeps a trace of AI-suggested tasks being
+#: folded into the scheduling logic (see build_task_from_spec / add_suggested_tasks).
+core_logger = logging.getLogger("pawpal.core")
 
 
 class Priority(Enum):
@@ -157,6 +162,74 @@ class Owner:
     def filter_by_pet(self, pet_name: str) -> list[Task]:
         """Return all tasks belonging to the pet with the given name."""
         return [task for pet in self.pets if pet.name == pet_name for task in pet.tasks]
+
+    def add_suggested_tasks(self, pet: Pet, specs) -> list[Task]:
+        """Fold AI-suggested tasks into the scheduling logic for one of this owner's pets.
+
+        This is the seam where the RAG feature (rag.py) meets the core system.
+        It accepts plain, duck-typed suggestion specs (each exposing name,
+        category, duration_minutes, priority -- see rag.TaskSpec), converts them
+        into real Task objects, and registers them on the pet so they flow into
+        the Scheduler exactly like hand-entered tasks. The core deliberately
+        imports nothing from rag.py: suggestions arrive as data, so retrieval,
+        guardrails, and logging stay isolated in the RAG layer. Invalid specs are
+        skipped rather than allowed to crash planning.
+        """
+        built = build_tasks_from_specs(specs)
+        for task in built:
+            pet.add_task(task)
+        core_logger.info("Added %d suggested task(s) to pet %r.", len(built), pet.name)
+        return built
+
+
+def _coerce_category(value: str) -> Category:
+    """Map a suggestion's category string onto the Category enum, defaulting safely."""
+    try:
+        return Category(str(value).strip().lower())
+    except (ValueError, AttributeError):
+        core_logger.warning("Unknown category %r; defaulting to ENRICHMENT.", value)
+        return Category.ENRICHMENT
+
+
+def _coerce_priority(value: str) -> Priority:
+    """Map a suggestion's priority string onto the Priority enum, defaulting safely."""
+    try:
+        return Priority(str(value).strip().lower())
+    except (ValueError, AttributeError):
+        core_logger.warning("Unknown priority %r; defaulting to MEDIUM.", value)
+        return Priority.MEDIUM
+
+
+def build_task_from_spec(spec) -> "Task | None":
+    """Turn one duck-typed suggestion spec into a Task, or None if it is unusable.
+
+    Accepts any object exposing name, category, duration_minutes, and priority
+    (typically a rag.TaskSpec) so the core keeps no dependency on the RAG layer.
+    Returning None on bad input lets the caller skip a single bad row instead of
+    failing the whole suggestion batch.
+    """
+    try:
+        name = str(spec.name).strip()
+        duration = int(spec.duration_minutes)
+    except (AttributeError, TypeError, ValueError):
+        core_logger.warning("Skipping unparseable task spec: %r", spec)
+        return None
+    if not name or duration <= 0:
+        core_logger.warning(
+            "Skipping invalid task spec (name=%r, duration=%r).", name, duration
+        )
+        return None
+    return Task(
+        name=name,
+        category=_coerce_category(getattr(spec, "category", "")),
+        duration_minutes=duration,
+        priority=_coerce_priority(getattr(spec, "priority", "")),
+    )
+
+
+def build_tasks_from_specs(specs) -> list[Task]:
+    """Build Tasks from an iterable of suggestion specs, skipping invalid ones."""
+    return [task for task in (build_task_from_spec(s) for s in specs) if task is not None]
 
 
 @dataclass

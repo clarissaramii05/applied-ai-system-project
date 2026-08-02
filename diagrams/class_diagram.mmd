@@ -1,0 +1,92 @@
+classDiagram
+    %% PawPal+ class diagram
+    %% Flow: Owner + Pet provide Tasks -> Scheduler builds a DailyPlan of PlanEntry items.
+
+    class Owner {
+        +str name
+        +int available_minutes
+        +list~str~ preferences
+        +add_pet(pet Pet) void
+        +list_pets() list~Pet~
+        +set_time_budget(minutes int) void
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +int age
+        +add_task(task Task) void
+        +remove_task(task Task) void
+        +list_tasks() list~Task~
+    }
+
+    class Task {
+        +str name
+        +Category category
+        +int duration_minutes
+        +Priority priority
+        +Recurrence recurrence
+        +bool done
+        +mark_done() void
+        +is_due_today(date Date) bool
+    }
+
+    class Scheduler {
+        +list~Task~ tasks
+        +int available_minutes
+        +sort_tasks() list~Task~
+        +filter_by_time() list~Task~
+        +generate_plan(date Date) DailyPlan
+        +explain() str
+    }
+
+    class DailyPlan {
+        +Date date
+        +list~PlanEntry~ entries
+        +list~Task~ skipped
+        +int total_minutes
+        +add_entry(entry PlanEntry) void
+        +list_skipped() list~Task~
+        +render() str
+    }
+
+    class PlanEntry {
+        +Time start_time
+        +Time end_time
+        +Task task
+        +duration() int
+    }
+
+    class Priority {
+        <<enumeration>>
+        HIGH
+        MEDIUM
+        LOW
+    }
+
+    class Category {
+        <<enumeration>>
+        WALK
+        FEEDING
+        MEDS
+        ENRICHMENT
+        GROOMING
+    }
+
+    class Recurrence {
+        <<enumeration>>
+        ONCE
+        DAILY
+        WEEKLY
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Scheduler "1" --> "*" Task : plans from
+    Scheduler ..> DailyPlan : produces
+    DailyPlan "1" *-- "*" PlanEntry : contains
+    PlanEntry --> Task : schedules
+    Task --> Priority : uses
+    Task --> Category : uses
+    Task --> Recurrence : uses

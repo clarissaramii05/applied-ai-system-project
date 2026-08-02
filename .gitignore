@@ -3,3 +3,6 @@ __pycache__/
 .venv_new/
 .pytest_cache/
 .DS_Store
+
+# PawPal+ runtime log written by the RAG feature (rag.py)
+pawpal.log
