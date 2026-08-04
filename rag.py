@@ -142,12 +142,16 @@ class Answer:
     ``guardrail`` names the guardrail that shaped the response, if any:
     ``"emergency"``, ``"empty"``, ``"too_long"``, or ``"low_confidence"``.
     ``sources`` lists the KB files the answer was grounded in.
+    ``confidence`` is the cosine-similarity score of the best-matching chunk
+    (0.0-1.0); it is how sure the retriever is that it found relevant guidance.
+    Higher means a stronger match; guardrail responses report 0.0.
     """
 
     text: str
     sources: list[str] = field(default_factory=list)
     guardrail: str | None = None
     grounded: bool = False
+    confidence: float = 0.0
 
 
 # --------------------------------------------------------------------------- #
@@ -323,20 +327,23 @@ class RagAssistant:
                     "general routine care for dogs and cats."
                 ),
                 guardrail="low_confidence",
+                confidence=best,
             )
 
         # Ground the answer in retrieved text (extractive -- no invented facts).
+        confidence = round(hits[0].score, 4)
         sources = list(dict.fromkeys(h.chunk.source for h in hits))
         logger.info(
-            "Answered %r using %s (top score %.4f).",
+            "Answered %r using %s (confidence %.4f).",
             cleaned,
             ", ".join(f"{h.chunk.source}#{h.chunk.title}" for h in hits),
-            hits[0].score,
+            confidence,
         )
         return Answer(
             text=self._compose(hits),
             sources=sources,
             grounded=True,
+            confidence=confidence,
         )
 
     @staticmethod

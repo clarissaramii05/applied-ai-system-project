@@ -188,7 +188,9 @@ if st.button("Ask PawPal"):
             st.error(result.text)  # emergency deflection stands out in red
         elif result.grounded:
             st.markdown(result.text)
+            caption = f"Confidence: {result.confidence:.2f}"
             if result.sources:
-                st.caption("Sources: " + ", ".join(result.sources))
+                caption += "  |  Sources: " + ", ".join(result.sources)
+            st.caption(caption)
         else:
             st.warning(result.text)  # empty / too-long / low-confidence
